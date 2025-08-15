@@ -1,0 +1,20 @@
+name: "Semgrep SAST Scan"
+description: "Run Semgrep for static code analysis"
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Semgrep
+      run: pip install semgrep
+
+    - name: Run Semgrep scan
+      run: |
+        semgrep --config=auto --json > semgrep-results.json || true
+
+    - name: Upload Semgrep results
+      uses: actions/upload-artifact@v4
+      with:
+        name: semgrep-results
+        path: semgrep-results.json

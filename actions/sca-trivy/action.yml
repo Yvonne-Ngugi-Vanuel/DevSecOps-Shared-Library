@@ -1,0 +1,20 @@
+name: "Trivy SCA Scan"
+description: "Run Trivy for dependency vulnerability scanning"
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Trivy
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: fs
+        format: json
+        output: trivy-sca-results.json
+
+    - name: Upload SCA results
+      uses: actions/upload-artifact@v4
+      with:
+        name: trivy-sca-results
+        path: trivy-sca-results.json

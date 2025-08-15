@@ -1,0 +1,38 @@
+name: Secure CI/CD Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      app-name:
+        required: true
+        type: string
+    secrets:
+      DEFECTDOJO_API_KEY:
+        required: true
+      DEFECTDOJO_URL:
+        required: true
+
+jobs:
+  sast:
+    name: Static Application Security Testing (Semgrep)
+    uses: ./.github/actions/sast-semgrep
+
+  sca:
+    name: Software Composition Analysis (Trivy)
+    uses: ./.github/actions/sca-trivy
+
+  container_scan:
+    name: Container & Image Scan (Trivy)
+    uses: ./.github/actions/container-scan-trivy
+
+  dast:
+    name: Dynamic Application Security Testing
+    uses: ./.github/actions/dast
+
+  secrets_scan:
+    name: Secrets Scanning (Gitleaks)
+    uses: ./.github/actions/secrets-gitleaks
+
+  defectdojo:
+    name: Upload results to DefectDojo
+    uses: ./.github/actions/defectdojo

@@ -1,0 +1,20 @@
+name: "Gitleaks Secret Scan"
+description: "Scan for secrets in the repo using Gitleaks"
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Gitleaks
+      uses: gitleaks/gitleaks-action@v2
+      with:
+        config-path: .gitleaks.toml
+        report-format: json
+        report-path: gitleaks-results.json
+
+    - name: Upload Gitleaks results
+      uses: actions/upload-artifact@v4
+      with:
+        name: gitleaks-results
+        path: gitleaks-results.json
