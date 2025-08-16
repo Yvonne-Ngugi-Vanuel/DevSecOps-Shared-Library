@@ -4,35 +4,87 @@ on:
   workflow_call:
     inputs:
       app-name:
+        description: "Application/service name"
         required: true
         type: string
+      image:
+        description: "Container image reference for image scanning (e.g. ghcr.io/org/app:tag)"
+        required: false
+        type: string
+      dast-target-url:
+        description: "Base URL for DAST (e.g. https://dev.example.com)"
+        required: false
+        type: string
+      fail-on-severity:
+        description: "Fail pipeline if >= this severity found (UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL)"
+        required: false
+        type: string
+        default: "HIGH"
     secrets:
       DEFECTDOJO_API_KEY:
-        required: true
+        required: false
       DEFECTDOJO_URL:
-        required: true
+        required: false
 
 jobs:
   sast:
-    name: Static Application Security Testing (Semgrep)
-    uses: ./.github/actions/sast-semgrep
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/../actions/sast-semgrep
+        with:
+          fail-on-severity: ${{ inputs['fail-on-severity'] }}
 
   sca:
-    name: Software Composition Analysis (Trivy)
-    uses: ./.github/actions/sca-trivy
+    name: SCA (Trivy FS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/../actions/sca-trivy
+        with:
+          fail-on-severity: ${{ inputs['fail-on-severity'] }}
 
   container_scan:
-    name: Container & Image Scan (Trivy)
-    uses: ./.github/actions/container-scan-trivy
-
-  dast:
-    name: Dynamic Application Security Testing
-    uses: ./.github/actions/dast
+    if: ${{ inputs.image != '' }}
+    name: Container Image Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/../actions/container-scan-trivy
+        with:
+          image: ${{ inputs.image }}
+          fail-on-severity: ${{ inputs['fail-on-severity'] }}
 
   secrets_scan:
-    name: Secrets Scanning (Gitleaks)
-    uses: ./.github/actions/secrets-gitleaks
+    name: Secrets (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/../actions/secrets-gitleaks
+
+  dast:
+    if: ${{ inputs['dast-target-url'] != '' }}
+    name: DAST (OWASP ZAP Baseline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/../actions/dast
+        with:
+          target-url: ${{ inputs['dast-target-url'] }}
 
   defectdojo:
-    name: Upload results to DefectDojo
-    uses: ./.github/actions/defectdojo
+    name: Upload Reports (DefectDojo)
+    runs-on: ubuntu-latest
+    needs: [sast, sca, container_scan, secrets_scan, dast]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: reports
+      - uses: ./.github/../actions/defectdojo
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+        with:
+          app-name: ${{ inputs['app-name'] }}
