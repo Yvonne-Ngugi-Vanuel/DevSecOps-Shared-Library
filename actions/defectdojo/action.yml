@@ -1,25 +1,80 @@
 name: "Upload to DefectDojo"
 description: "Send scan results to DefectDojo"
+inputs:
+  app-name:
+    description: "Product/application name in DefectDojo"
+    required: true
 runs:
   using: "composite"
   steps:
-    - name: Upload Semgrep results
+    - name: Prepare files
+      shell: bash
       run: |
-        curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-        -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-        -F "scan_type=Semgrep JSON Report" \
-        -F "file=@semgrep-results.json"
+        set -e
+        ls -la
+        echo "Reports directory content (if any):"
+        ls -la reports || true
 
-    - name: Upload Trivy SCA results
+    - name: Upload Semgrep
+      if: ${{ env.DEFECTDOJO_URL != '' && env.DEFECTDOJO_API_KEY != '' }}
+      shell: bash
       run: |
-        curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-        -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-        -F "scan_type=Trivy JSON Report" \
-        -F "file=@trivy-sca-results.json"
+        set -e
+        f="reports/semgrep-results/semgrep-results.json"
+        [ -f "$f" ] || f="semgrep-results.json"
+        if [ -f "$f" ]; then
+          curl -sS -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+            -F "scan_type=Semgrep JSON Report" \
+            -F "file=@$f" \
+            -F "engagement_name=${{ inputs.app-name }}: CI" \
+            -f
+        fi
 
-    - name: Upload Container Scan results
+    - name: Upload Trivy FS
+      if: ${{ env.DEFECTDOJO_URL != '' && env.DEFECTDOJO_API_KEY != '' }}
+      shell: bash
       run: |
-        curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-        -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-        -F "scan_type=Trivy JSON Report" \
-        -F "file=@trivy-container-results.json"
+        set -e
+        f="reports/trivy-sca-results/trivy-sca-results.json"
+        [ -f "$f" ] || f="trivy-sca-results.json"
+        if [ -f "$f" ]; then
+          curl -sS -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+            -F "scan_type=Trivy JSON Report" \
+            -F "file=@$f" \
+            -F "engagement_name=${{ inputs.app-name }}: CI" \
+            -f
+        fi
+
+    - name: Upload Trivy Image
+      if: ${{ env.DEFECTDOJO_URL != '' && env.DEFECTDOJO_API_KEY != '' }}
+      shell: bash
+      run: |
+        set -e
+        f="reports/trivy-container-results/trivy-container-results.json"
+        [ -f "$f" ] || f="trivy-container-results.json"
+        if [ -f "$f" ]; then
+          curl -sS -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+            -F "scan_type=Trivy JSON Report" \
+            -F "file=@$f" \
+            -F "engagement_name=${{ inputs.app-name }}: CI" \
+            -f
+        fi
+
+    - name: Upload ZAP Baseline
+      if: ${{ env.DEFECTDOJO_URL != '' && env.DEFECTDOJO_API_KEY != '' }}
+      shell: bash
+      run: |
+        set -e
+        f="reports/zap-baseline/zap-baseline.json"
+        [ -f "$f" ] || f="zap-baseline.json"
+        if [ -f "$f" ]; then
+          curl -sS -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+            -F "scan_type=ZAP Scan" \
+            -F "file=@$f" \
+            -F "engagement_name=${{ inputs.app-name }}: CI" \
+            -f
+        fi
