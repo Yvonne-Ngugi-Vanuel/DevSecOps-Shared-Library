@@ -1,18 +1,45 @@
 name: "Semgrep SAST Scan"
 description: "Run Semgrep for static code analysis"
+inputs:
+  config:
+    description: "Semgrep config (e.g., auto, p/ci, r/<rule>)"
+    required: false
+    default: "auto"
+  fail-on-severity:
+    description: "Fail if >= this severity found (INFO,LOW,MEDIUM,HIGH,CRITICAL)"
+    required: false
+    default: "HIGH"
 runs:
   using: "composite"
   steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Install Semgrep
-      run: pip install semgrep
-
-    - name: Run Semgrep scan
+    - name: Install Python & Semgrep (pinned)
+      shell: bash
       run: |
-        semgrep --config=auto --json > semgrep-results.json || true
-
+        set -e
+        sudo apt-get update -y
+        sudo apt-get install -y python3-pip
+        pip3 install --upgrade 'semgrep==1.81.0'
+    - name: Run Semgrep
+      shell: bash
+      run: |
+        set -e
+        semgrep --config="${{ inputs.config }}" --error --json -o semgrep-results.json || true
+        # Fail on threshold if findings exist at/above threshold
+        python3 - <<'PY'
+        import json, sys, os
+        thresh = os.getenv("THRESH","${{ inputs.fail-on-severity }}").upper()
+        order = ["INFO","LOW","MEDIUM","HIGH","CRITICAL"]
+        data = json.load(open("semgrep-results.json"))
+        maxsev = None
+        for r in data.get("results",[]):
+          s = (r.get("extra") or {}).get("severity","INFO").upper()
+          if s in order and (maxsev is None or order.index(s) > order.index(maxsev)):
+            maxsev = s
+        if maxsev and order.index(maxsev) >= order.index(thresh):
+          print(f"Semgrep found {maxsev} >= {thresh}; failing.")
+          sys.exit(2)
+        print("Semgrep threshold OK.")
+        PY
     - name: Upload Semgrep results
       uses: actions/upload-artifact@v4
       with:
