@@ -1,19 +1,52 @@
-name: "Trivy SCA Scan"
-description: "Run Trivy for dependency vulnerability scanning"
+name: "Trivy SCA Scan (Filesystem)"
+description: "Run Trivy against source deps for known vulns"
+inputs:
+  path:
+    description: "Folder to scan"
+    required: false
+    default: "."
+  fail-on-severity:
+    description: "Fail if >= this severity found (UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL)"
+    required: false
+    default: "HIGH"
 runs:
   using: "composite"
   steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Install Trivy
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: fs
-        format: json
-        output: trivy-sca-results.json
-
-    - name: Upload SCA results
+    - name: Install Trivy (pinned)
+      shell: bash
+      run: |
+        set -e
+        TRIVY_VER=0.54.1
+        curl -sfL https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VER}/trivy_${TRIVY_VER}_Linux-64bit.tar.gz \
+          | tar -zx
+        sudo mv trivy /usr/local/bin/
+        trivy --version
+    - name: Run Trivy FS
+      shell: bash
+      run: |
+        set -e
+        trivy fs --security-checks vuln,secret,config \
+          --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+          --format json -o trivy-sca-results.json "${{ inputs.path }}" || true
+        # Fail on threshold if any vuln >= threshold
+        python3 - <<'PY'
+        import json, os, sys
+        t = os.getenv("THRESH","${{ inputs.fail-on-severity }}").upper()
+        order = ["UNKNOWN","LOW","MEDIUM","HIGH","CRITICAL"]
+        data = json.load(open("trivy-sca-results.json"))
+        hit=False
+        for result in data.get("Results",[]):
+          for vuln in result.get("Vulnerabilities",[]) or []:
+            sev = vuln.get("Severity","UNKNOWN").upper()
+            if sev in order and order.index(sev) >= order.index(t):
+              hit=True; break
+          if hit: break
+        if hit:
+          print(f"Trivy FS found issues >= {t}; failing.")
+          sys.exit(2)
+        print("Trivy FS threshold OK.")
+        PY
+    - name: Upload FS results
       uses: actions/upload-artifact@v4
       with:
         name: trivy-sca-results
